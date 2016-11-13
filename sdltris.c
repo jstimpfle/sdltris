@@ -13,7 +13,6 @@
 
 Uint8 black[4] = { 0, 0, 0, 255 };
 Uint8 white[4] = { 255, 255, 255, 255 };
-Uint8 gray[4] = { 200, 200, 200, 255 };
 Uint8 red[4] = { 255, 0, 0, 255 };
 
 typedef int piece_tp[4][4];
@@ -351,7 +350,7 @@ int draw_block(int y, int x, Uint8 *color)
                 return -1;
         }
 
-        r = set_color(gray);
+        r = set_color(black);
         if (r != 0)
                 return -1;
         r = SDL_RenderDrawRect(sdl_renderer, &sdl_rect);
@@ -426,7 +425,8 @@ int init_graphics(void)
                 "Tetris",
                 SDL_WINDOWPOS_UNDEFINED,
                 SDL_WINDOWPOS_UNDEFINED,
-                480, 640,
+                NUM_COLS * BLOCK_WIDTH,
+                NUM_ROWS * BLOCK_HEIGHT,
                 SDL_WINDOW_OPENGL
         );
         if (sdl_window == NULL) {
@@ -481,7 +481,7 @@ int mainloop(void)
         SDL_ClearError();
         while (!user_quit) {
                 int ms = 350;
-                while (ms > 0) {
+                while (!user_quit && ms > 0) {
                         r = set_timer_goal(ms);
                         if (r != 0)
                                 return -1;
