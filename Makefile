@@ -1,4 +1,4 @@
-CFLAGS = -std=c99 -Wall -Wextra -pedantic
+CFLAGS = -std=c89 -Wall -Wextra -pedantic
 
 all: sdltris
 

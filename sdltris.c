@@ -17,58 +17,46 @@ Uint8 red[4] = { 255, 0, 0, 255 };
 
 typedef int piece_tp[4][4];
 
-#define I_PIECE 0
-#define J_PIECE 1
-#define L_PIECE 2
-#define O_PIECE 3
-#define S_PIECE 4
-#define T_PIECE 5
-#define Z_PIECE 6
-
 piece_tp pieces[] = {
-        [I_PIECE] = {
+        {
                 { 0, 0, 0, 0 },
                 { 1, 1, 1, 1 },
                 { 0, 0, 0, 0 },
                 { 0, 0, 0, 0 },
         },
-
-        [J_PIECE] = {
+        {
                 { 0, 0, 0, 0 },
                 { 0, 1, 1, 1 },
                 { 0, 1, 0, 0 },
                 { 0, 0, 0, 0 },
         },
-
-        [L_PIECE] = {
+        {
                 { 0, 0, 0, 0 },
                 { 1, 1, 1, 0 },
                 { 0, 0, 1, 0 },
                 { 0, 0, 0, 0 },
         },
-
-        [O_PIECE] = {
+        {
                 { 0, 0, 0, 0 },
                 { 0, 1, 1, 0 },
                 { 0, 1, 1, 0 },
                 { 0, 0, 0, 0 },
         },
-
-        [S_PIECE] = {
+        {
                 { 0, 0, 0, 0 },
                 { 0, 0, 1, 1 },
                 { 0, 1, 1, 0 },
                 { 0, 0, 0, 0 },
         },
 
-        [T_PIECE] = {
+        {
                 { 0, 0, 0, 0 },
                 { 0, 1, 0, 0 },
                 { 1, 1, 1, 0 },
                 { 0, 0, 0, 0 }
         },
 
-        [Z_PIECE] = {
+        {
                 { 0, 0, 0, 0 },
                 { 1, 1, 0, 0 },
                 { 0, 1, 1, 0 },
@@ -76,19 +64,18 @@ piece_tp pieces[] = {
         },
 };
 
-int board[NUM_ROWS * NUM_COLS];
 SDL_Window *sdl_window;
 SDL_Renderer *sdl_renderer;
 int win_y;
 int win_x;
 
-int user_quit;
-piece_tp piece;
-piece_tp nextpiece;
+int board[NUM_ROWS * NUM_COLS];
 int piece_y;
 int piece_x;
-
-struct timespec timer_goal;
+piece_tp piece;
+piece_tp nextpiece;
+int user_quit;
+struct timespec timer;
 
 int errmsg(const char *fmt, ...)
 {
@@ -101,26 +88,24 @@ int errmsg(const char *fmt, ...)
         return r;
 }
 
-int set_timer_goal(int ms_remain)
+void timer_set_ms(int ms)
 {
         int r;
 
-        r = clock_gettime(CLOCK_MONOTONIC, &timer_goal);
+        r = clock_gettime(CLOCK_MONOTONIC, &timer);
         if (r != 0) {
                 perror("clock_gettime()");
-                return -1;
+                abort();
         }
 
-        timer_goal.tv_nsec += (long) ms_remain * 1000000;
-        if (timer_goal.tv_nsec > 1000000000) {
-                timer_goal.tv_nsec -= 1000000000;
-                timer_goal.tv_sec += 1;
+        timer.tv_nsec += (long) ms * 1000000;
+        if (timer.tv_nsec > 1000000000) {
+                timer.tv_nsec -= 1000000000;
+                timer.tv_sec += 1;
         }
-
-        return 0;
 }
 
-int get_timer_goal(int *ms_remain)
+int timer_get_ms(void)
 {
         int r;
         struct timespec now;
@@ -128,12 +113,11 @@ int get_timer_goal(int *ms_remain)
         r = clock_gettime(CLOCK_MONOTONIC, &now);
         if (r != 0) {
                 perror("clock_gettime()");
-                return -1;
+                abort();
         }
 
-        *ms_remain = (int) ((timer_goal.tv_sec - now.tv_sec) * 1000
-                + (timer_goal.tv_nsec - now.tv_nsec) / 1000000);
-        return 0;
+        return (int) ((timer.tv_sec - now.tv_sec) * 1000
+                + (timer.tv_nsec - now.tv_nsec) / 1000000);
 }
 
 void random_piece(piece_tp out)
@@ -282,6 +266,7 @@ void let_fall(void)
 {
         while (move_down()) {
         }
+        timer_set_ms(0);
 }
 
 void tick(void)
@@ -454,20 +439,22 @@ void exit_graphics(void)
 
 int process_event(SDL_Event *event)
 {
+        SDL_KeyboardEvent *key;
+
         if (event->type != SDL_KEYDOWN)
                 return 0;
 
-        SDL_KeyboardEvent *key = (SDL_KeyboardEvent *) event;
+        key = (SDL_KeyboardEvent *) event;
 
         switch (key->keysym.sym) {
         case SDLK_LEFT: move_left(); break;
         case SDLK_RIGHT: move_right(); break;
         case SDLK_DOWN: move_down(); break;
+        case SDLK_SPACE: let_fall(); break;
         case SDLK_a: rotate_left(); break;
         case SDLK_d: rotate_right(); break;
-        case SDLK_SPACE: let_fall(); break;
         case SDLK_q: user_quit = 1; break;
-        case SDLK_r: init_game(); break; // XXX
+        case SDLK_r: init_game(); break;  /* XXX */
         default: break;
         }
         return 0;
@@ -476,26 +463,31 @@ int process_event(SDL_Event *event)
 int mainloop(void)
 {
         int r;
+        int ms;
         SDL_Event sdl_event;
 
         SDL_ClearError();
         while (!user_quit) {
-                int ms = 350;
-                while (!user_quit && ms > 0) {
-                        r = set_timer_goal(ms);
-                        if (r != 0)
-                                return -1;
+                timer_set_ms(350);
+                for (;;) {
                         if (*SDL_GetError() != 0) {
-                                errmsg("strange error: %s\n",
-                                       SDL_GetError());
+                                errmsg("strange error: %s\n", SDL_GetError());
+                                return -1;
                         }
+
+                        if (user_quit)
+                                break;
+
+                        ms = timer_get_ms();
+                        if (ms < 0)
+                                break;
+
                         r = SDL_WaitEventTimeout(&sdl_event, ms);
                         if (r == 0 && *SDL_GetError() != 0) {
                                 errmsg("SDL_WaitEventTimeout(): %s\n",
                                        SDL_GetError());
                                 return -1;
                         }
-
                         if (r == 0)
                                 break;
 
@@ -503,9 +495,6 @@ int mainloop(void)
                         if (r != 0)
                                 return -1;
                         r = draw();
-                        if (r != 0)
-                                return -1;
-                        r = get_timer_goal(&ms);
                         if (r != 0)
                                 return -1;
                 }
